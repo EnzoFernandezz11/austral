@@ -3,7 +3,10 @@
 import {
   ChevronRight,
   Download,
+  Pencil,
+  Plus,
   Shapes,
+  Trash2,
   Upload,
   WalletCards,
   X,
@@ -24,15 +27,32 @@ import { TopHeader } from "@/components/top-header";
 import { useAppData } from "@/features/settings/app-provider";
 import { parseAmountToCents } from "@/lib/finance/money";
 import { formatArs } from "@/lib/formatters/currency";
+import type { Category, TransactionType } from "@/types/finance";
 
 type OpenPanel = "budget" | "categories" | "message" | "import" | null;
+type CategoryEditor = "new" | string | null;
+
+function centsToInput(amountCents: number): string {
+  return `${Math.floor(amountCents / 100)},${String(amountCents % 100).padStart(2, "0")}`;
+}
 
 export function SettingsScreen() {
-  const { status, error, settings, categories, setMonthlyBudget, refresh } =
-    useAppData();
+  const {
+    status,
+    error,
+    settings,
+    categories,
+    setMonthlyBudget,
+    saveCategory: persistCategory,
+    deleteCategory,
+    refresh,
+  } = useAppData();
   const fileInput = useRef<HTMLInputElement>(null);
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
   const [budget, setBudget] = useState("");
+  const [categoryEditor, setCategoryEditor] = useState<CategoryEditor>(null);
+  const [categoryName, setCategoryName] = useState("");
+  const [categoryType, setCategoryType] = useState<TransactionType>("expense");
   const [plan, setPlan] = useState<BackupImportPlan | null>(null);
   const [message, setMessage] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
@@ -57,6 +77,64 @@ export function SettingsScreen() {
     setBudget("");
     setActionError(null);
     setOpenPanel(null);
+  };
+
+  const openBudget = () => {
+    setBudget(
+      settings.monthlyBudgetCents === undefined
+        ? ""
+        : centsToInput(settings.monthlyBudgetCents),
+    );
+    setActionError(null);
+    setOpenPanel("budget");
+  };
+
+  const openCategoryEditor = (category?: Category) => {
+    setCategoryEditor(category?.id ?? "new");
+    setCategoryName(category?.name ?? "");
+    setCategoryType(category?.type === "income" ? "income" : "expense");
+    setActionError(null);
+  };
+
+  const saveCategory = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      setBusy(true);
+      await persistCategory(
+        categoryName,
+        categoryType,
+        categoryEditor === "new" ? undefined : (categoryEditor ?? undefined),
+      );
+      setCategoryEditor(null);
+      setActionError(null);
+    } catch (cause: unknown) {
+      setActionError(
+        cause instanceof Error
+          ? cause.message
+          : "No se pudo guardar la categoría.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeCategory = async (category: Category) => {
+    if (!window.confirm(`¿Eliminar la categoría “${category.name}”?`)) {
+      return;
+    }
+    try {
+      setBusy(true);
+      await deleteCategory(category.id);
+      setActionError(null);
+    } catch (cause: unknown) {
+      setActionError(
+        cause instanceof Error
+          ? cause.message
+          : "No se pudo eliminar la categoría.",
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   const exportBackup = async () => {
@@ -125,7 +203,7 @@ export function SettingsScreen() {
         <SettingsItem
           icon={WalletCards}
           label="Presupuesto mensual"
-          onClick={() => setOpenPanel("budget")}
+          onClick={openBudget}
         />
         <SettingsItem
           icon={Shapes}
@@ -166,6 +244,10 @@ export function SettingsScreen() {
       {openPanel === "budget" ? (
         <Modal onClose={() => setOpenPanel(null)} title="Presupuesto mensual">
           <p className="text-sm text-[var(--muted)]">
+            Definí cuánto querés destinar a gastos cada mes. Austral lo compara
+            con tus gastos para mostrarte lo que queda disponible.
+          </p>
+          <p className="mt-3 text-sm text-[var(--muted)]">
             Actual:{" "}
             {settings.monthlyBudgetCents === undefined
               ? "sin configurar"
@@ -205,19 +287,95 @@ export function SettingsScreen() {
 
       {openPanel === "categories" ? (
         <Modal onClose={() => setOpenPanel(null)} title="Categorías">
-          <ul className="max-h-72 overflow-y-auto">
-            {categories.map((category) => (
-              <li
-                className="flex min-h-11 items-center border-b text-sm last:border-b-0 hairline"
-                key={category.id}
+          {categoryEditor === null ? (
+            <>
+              <ul className="max-h-64 overflow-y-auto">
+                {categories.map((category) => (
+                  <li
+                    className="flex min-h-12 items-center gap-2 border-b text-sm last:border-b-0 hairline"
+                    key={category.id}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate">{category.name}</p>
+                      <p className="text-[10px] text-[var(--muted)]">
+                        {category.type === "expense" ? "Gasto" : "Ingreso"}
+                      </p>
+                    </div>
+                    <button
+                      aria-label={`Editar ${category.name}`}
+                      className="grid size-11 place-items-center"
+                      onClick={() => openCategoryEditor(category)}
+                      type="button"
+                    >
+                      <Pencil aria-hidden="true" size={15} />
+                    </button>
+                    <button
+                      aria-label={`Eliminar ${category.name}`}
+                      className="grid size-11 place-items-center text-red-700 disabled:opacity-40"
+                      disabled={busy}
+                      onClick={() => void removeCategory(category)}
+                      type="button"
+                    >
+                      <Trash2 aria-hidden="true" size={15} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                className="button-black mt-5 w-full"
+                onClick={() => openCategoryEditor()}
+                type="button"
               >
-                {category.name}
-                <span className="ml-auto text-[10px] text-[var(--muted)]">
-                  {category.type === "expense" ? "Gasto" : "Ingreso"}
-                </span>
-              </li>
-            ))}
-          </ul>
+                <Plus aria-hidden="true" size={16} />
+                Agregar categoría
+              </button>
+            </>
+          ) : (
+            <form className="space-y-4" onSubmit={saveCategory}>
+              <div>
+                <label className="text-xs font-medium" htmlFor="category-name">
+                  Nombre
+                </label>
+                <input
+                  autoFocus
+                  className="field mt-1"
+                  id="category-name"
+                  maxLength={80}
+                  onChange={(event) => setCategoryName(event.target.value)}
+                  required
+                  value={categoryName}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium" htmlFor="category-type">
+                  Tipo
+                </label>
+                <select
+                  className="field mt-1"
+                  id="category-type"
+                  onChange={(event) =>
+                    setCategoryType(event.target.value as TransactionType)
+                  }
+                  value={categoryType}
+                >
+                  <option value="expense">Gasto</option>
+                  <option value="income">Ingreso</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button className="button-black" disabled={busy} type="submit">
+                  Guardar
+                </button>
+                <button
+                  className="button-outline"
+                  onClick={() => setCategoryEditor(null)}
+                  type="button"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          )}
         </Modal>
       ) : null}
 

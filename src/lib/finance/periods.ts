@@ -47,3 +47,12 @@ export function filterTransactionsByMonth(
     isTransactionInMonth(transaction, month),
   );
 }
+
+export function filterTransactionsByYear(
+  transactions: readonly Transaction[],
+  year: number,
+): Transaction[] {
+  return transactions.filter((transaction) =>
+    transaction.occurredOn.startsWith(`${year}-`),
+  );
+}

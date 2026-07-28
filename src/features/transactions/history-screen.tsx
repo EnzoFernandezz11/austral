@@ -10,16 +10,23 @@ import {
 import { TransactionList } from "@/components/transaction-list";
 import { useAppData } from "@/features/settings/app-provider";
 import { filterTransactions } from "@/lib/finance/calculations";
-import { currentMonth, monthKey, shiftMonth } from "@/lib/finance/periods";
+import {
+  currentMonth,
+  filterTransactionsByYear,
+  monthKey,
+  shiftMonth,
+} from "@/lib/finance/periods";
 import { formatLocalDate, formatMonth } from "@/lib/formatters/dates";
 import type { MonthSelection, Transaction } from "@/types/finance";
 
 type FilterValue = "all" | "expense" | "income" | `category:${string}`;
+type Period = "month" | "year";
 
 export function HistoryScreen() {
   const { status, error, transactions, categories, deleteTransaction } =
     useAppData();
   const [month, setMonth] = useState(currentMonth);
+  const [period, setPeriod] = useState<Period>("month");
   const [filter, setFilter] = useState<FilterValue>("all");
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -28,8 +35,16 @@ export function HistoryScreen() {
       ? filter.slice("category:".length)
       : "all";
     const type = filter === "expense" || filter === "income" ? filter : "all";
-    return filterTransactions(transactions, { month, type, categoryId });
-  }, [transactions, month, filter]);
+    const matchingPeriod =
+      period === "month"
+        ? filterTransactions(transactions, { month, type, categoryId })
+        : filterTransactionsByYear(transactions, month.year).filter(
+            (transaction) =>
+              (type === "all" || transaction.type === type) &&
+              (categoryId === "all" || transaction.categoryId === categoryId),
+          );
+    return matchingPeriod;
+  }, [transactions, month, period, filter]);
 
   const groups = useMemo(() => groupTransactionsByDay(filtered), [filtered]);
   const monthOptions = useMemo(
@@ -71,12 +86,30 @@ export function HistoryScreen() {
     <div className="screen pt-8">
       <h1 className="text-[30px] font-bold tracking-[-0.04em]">Movimientos</h1>
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         <label className="relative">
-          <span className="sr-only">Mes</span>
+          <span className="sr-only">Período</span>
+          <select
+            className="h-11 appearance-none rounded-full border bg-transparent px-4 text-[11px] font-semibold hairline"
+            onChange={(event) => setPeriod(event.target.value as Period)}
+            value={period}
+          >
+            <option value="month">Mensual</option>
+            <option value="year">Anual</option>
+          </select>
+        </label>
+        <label className="relative">
+          <span className="sr-only">{period === "month" ? "Mes" : "Año"}</span>
           <select
             className="h-11 appearance-none rounded-full border bg-transparent pl-4 pr-9 text-[11px] font-semibold hairline"
             onChange={(event) => {
+              if (period === "year") {
+                setMonth((current) => ({
+                  ...current,
+                  year: Number(event.target.value),
+                }));
+                return;
+              }
               const selected = monthOptions.find(
                 (option) => monthKey(option) === event.target.value,
               );
@@ -84,13 +117,21 @@ export function HistoryScreen() {
                 setMonth(selected);
               }
             }}
-            value={monthKey(month)}
+            value={period === "month" ? monthKey(month) : String(month.year)}
           >
-            {monthOptions.map((option) => (
-              <option key={monthKey(option)} value={monthKey(option)}>
-                {formatMonth(option)}
-              </option>
-            ))}
+            {period === "month"
+              ? monthOptions.map((option) => (
+                  <option key={monthKey(option)} value={monthKey(option)}>
+                    {formatMonth(option)}
+                  </option>
+                ))
+              : [...new Set(monthOptions.map((option) => option.year))].map(
+                  (year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ),
+                )}
           </select>
           <ChevronDown
             aria-hidden="true"

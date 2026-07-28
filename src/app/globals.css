@@ -115,6 +115,28 @@ button {
   border-color: var(--line);
 }
 
+.analysis-entry {
+  animation: analysis-enter 220ms ease-out both;
+}
+
+@keyframes analysis-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analysis-entry {
+    animation: none;
+  }
+}
+
 @media (min-width: 600px) {
   body {
     display: grid;

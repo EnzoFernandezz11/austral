@@ -3,7 +3,6 @@
 import { useState } from "react";
 import {
   DistributionChart,
-  TrendChart,
   type DistributionItem,
 } from "@/features/analytics/analysis-charts";
 import { MonthSelector } from "@/components/month-selector";
@@ -18,6 +17,7 @@ import {
 import {
   currentMonth,
   filterTransactionsByMonth,
+  filterTransactionsByYear,
   shiftMonth,
 } from "@/lib/finance/periods";
 import { formatArs } from "@/lib/formatters/currency";
@@ -28,6 +28,7 @@ const CHART_COLORS = ["#193e5d", "#4b6d8b", "#7b817f", "#dedfdd"] as const;
 export function AnalyticsScreen() {
   const { status, error, transactions, categories } = useAppData();
   const [month, setMonth] = useState(currentMonth);
+  const [period, setPeriod] = useState<"month" | "year">("month");
 
   if (status === "loading") {
     return <LoadingState />;
@@ -38,26 +39,65 @@ export function AnalyticsScreen() {
   }
 
   const previousMonth = shiftMonth(month, -1);
-  const monthlyTransactions = filterTransactionsByMonth(transactions, month);
-  const totals = calculateTotals(monthlyTransactions);
+  const selectedTransactions =
+    period === "month"
+      ? filterTransactionsByMonth(transactions, month)
+      : filterTransactionsByYear(transactions, month.year);
+  const totals = calculateTotals(selectedTransactions);
   const categoryExpenses = calculateExpensesByCategory(
-    monthlyTransactions,
+    selectedTransactions,
     categories,
   );
   const distribution = buildDistribution(categoryExpenses);
-  const trend = buildTrend(monthlyTransactions);
-  const comparison = calculateMonthlyComparison(
-    transactions,
-    month,
-    previousMonth,
-  );
+  const comparison =
+    period === "month"
+      ? calculateMonthlyComparison(transactions, month, previousMonth)
+      : calculateYearlyComparison(transactions, month.year);
 
   return (
     <div className="screen">
       <TopHeader />
-      <MonthSelector compact onChange={setMonth} value={month} />
+      <div className="pt-5">
+        <div className="grid grid-cols-2 rounded-xl border p-1 hairline">
+          <PeriodButton
+            active={period === "month"}
+            onClick={() => setPeriod("month")}
+          >
+            Mensual
+          </PeriodButton>
+          <PeriodButton
+            active={period === "year"}
+            onClick={() => setPeriod("year")}
+          >
+            Anual
+          </PeriodButton>
+        </div>
+        {period === "month" ? (
+          <MonthSelector compact onChange={setMonth} value={month} />
+        ) : (
+          <div className="flex items-center justify-center gap-5 py-5 text-sm font-medium">
+            <button
+              aria-label="Año anterior"
+              className="min-h-11 px-2 text-[var(--navy)]"
+              onClick={() => setMonth((current) => shiftMonth(current, -12))}
+              type="button"
+            >
+              ←
+            </button>
+            <p className="min-w-12 text-center">{month.year}</p>
+            <button
+              aria-label="Año siguiente"
+              className="min-h-11 px-2 text-[var(--navy)]"
+              onClick={() => setMonth((current) => shiftMonth(current, 12))}
+              type="button"
+            >
+              →
+            </button>
+          </div>
+        )}
+      </div>
 
-      <section className="rounded-xl border bg-white/35 p-5 hairline">
+      <section className="analysis-entry rounded-xl border bg-white/35 p-5 hairline">
         <h1 className="text-[19px] font-semibold">Distribución</h1>
         {distribution.length === 0 ? (
           <p className="py-16 text-center text-sm text-[var(--muted)]">
@@ -77,19 +117,10 @@ export function AnalyticsScreen() {
         )}
       </section>
 
-      <section className="mt-4 rounded-xl border bg-white/35 p-5 hairline">
-        <h2 className="text-[19px] font-semibold">Tendencias</h2>
-        {trend.length === 0 ? (
-          <p className="py-12 text-center text-sm text-[var(--muted)]">
-            Todavía no hay datos para graficar.
-          </p>
-        ) : (
-          <TrendChart data={trend} />
-        )}
-      </section>
-
       <section className="mt-4 rounded-xl border bg-white/20 p-5 hairline">
-        <h2 className="text-sm font-semibold">Resumen del mes</h2>
+        <h2 className="text-sm font-semibold">
+          Resumen {period === "month" ? "del mes" : "del año"}
+        </h2>
         <p className="mt-2 text-[13px] leading-5 text-[#555d60]">
           {comparison.percentageChange === null
             ? "Todavía no hay un mes anterior con el que comparar tus gastos."
@@ -103,6 +134,29 @@ export function AnalyticsScreen() {
         </p>
       </section>
     </div>
+  );
+}
+
+function PeriodButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      className={`min-h-9 rounded-lg text-xs font-semibold ${
+        active ? "bg-[var(--navy)] text-white" : "text-[var(--muted)]"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -138,19 +192,25 @@ function buildDistribution(
   ];
 }
 
-function buildTrend(
+function calculateYearlyComparison(
   transactions: readonly Transaction[],
-): Array<{ day: string; amountCents: number }> {
-  const byDay = new Map<string, number>();
-  for (const transaction of transactions) {
-    if (transaction.type === "expense") {
-      const day = transaction.occurredOn.slice(-2);
-      byDay.set(day, (byDay.get(day) ?? 0) + transaction.amountCents);
-    }
-  }
-  return [...byDay.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([day, amountCents]) => ({ day, amountCents }));
+  year: number,
+): {
+  percentageChange: number | null;
+} {
+  const currentExpenseCents = calculateTotals(
+    filterTransactionsByYear(transactions, year),
+  ).expenseCents;
+  const previousExpenseCents = calculateTotals(
+    filterTransactionsByYear(transactions, year - 1),
+  ).expenseCents;
+  return {
+    percentageChange:
+      previousExpenseCents === 0
+        ? null
+        : ((currentExpenseCents - previousExpenseCents) * 100) /
+          previousExpenseCents,
+  };
 }
 
 function DistributionList({

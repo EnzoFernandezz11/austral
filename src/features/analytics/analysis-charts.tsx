@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  Area,
-  AreaChart,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatArs } from "@/lib/formatters/currency";
 
 export type DistributionItem = {
@@ -32,8 +24,9 @@ export function DistributionChart({
           <Pie
             data={data}
             dataKey="amountCents"
+            animationDuration={350}
             innerRadius={66}
-            isAnimationActive={false}
+            isAnimationActive
             nameKey="name"
             outerRadius={86}
             paddingAngle={0}
@@ -54,37 +47,6 @@ export function DistributionChart({
           </p>
         </div>
       </div>
-    </div>
-  );
-}
-
-export function TrendChart({
-  data,
-}: {
-  data: readonly { day: string; amountCents: number }[];
-}) {
-  return (
-    <div className="mt-3 h-36">
-      <ResponsiveContainer height="100%" width="100%">
-        <AreaChart
-          data={data}
-          margin={{ bottom: 4, left: 2, right: 2, top: 8 }}
-        >
-          <Tooltip
-            formatter={(value) => formatArs(Number(value))}
-            labelFormatter={(label) => `Día ${String(label)}`}
-          />
-          <Area
-            dataKey="amountCents"
-            fill="#edf2f5"
-            fillOpacity={1}
-            isAnimationActive={false}
-            stroke="var(--navy)"
-            strokeWidth={2}
-            type="monotone"
-          />
-        </AreaChart>
-      </ResponsiveContainer>
     </div>
   );
 }

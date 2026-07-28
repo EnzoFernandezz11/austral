@@ -20,6 +20,7 @@ import type {
   Category,
   Transaction,
   TransactionDraft,
+  TransactionType,
 } from "@/types/finance";
 
 type AppStatus = "loading" | "ready" | "error";
@@ -34,6 +35,12 @@ type AppContextValue = {
   saveTransaction: (draft: TransactionDraft, id?: string) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   setMonthlyBudget: (amountCents?: number) => Promise<void>;
+  saveCategory: (
+    name: string,
+    type: TransactionType,
+    id?: string,
+  ) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
   clearTransactions: () => Promise<void>;
   restoreDevelopmentData: () => Promise<void>;
 };
@@ -125,6 +132,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [refresh],
   );
 
+  const saveCategory = useCallback(
+    async (name: string, type: TransactionType, id?: string) => {
+      if (id === undefined) {
+        await categoryRepository.create(name, type);
+      } else {
+        await categoryRepository.update(id, name, type);
+      }
+      await refresh();
+    },
+    [refresh],
+  );
+
+  const deleteCategory = useCallback(
+    async (id: string) => {
+      await categoryRepository.remove(id);
+      await refresh();
+    },
+    [refresh],
+  );
+
   const clearTransactions = useCallback(async () => {
     await appDataRepository.clearTransactions();
     await refresh();
@@ -146,6 +173,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveTransaction,
       deleteTransaction,
       setMonthlyBudget,
+      saveCategory,
+      deleteCategory,
       clearTransactions,
       restoreDevelopmentData,
     }),
@@ -159,6 +188,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveTransaction,
       deleteTransaction,
       setMonthlyBudget,
+      saveCategory,
+      deleteCategory,
       clearTransactions,
       restoreDevelopmentData,
     ],
