@@ -1,0 +1,32 @@
+{
+  "name": "Anotar gasto",
+  "short_name": "Anotar gasto",
+  "description": "Acceso rápido para registrar un gasto en Austral.",
+  "lang": "es-AR",
+  "start_url": "/nuevo",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/icons/quick-expense-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/quick-expense-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/quick-expense-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
