@@ -75,4 +75,32 @@ describe("backups de Austral", () => {
     expect(mergedAdditions.categories).toEqual([]);
     expect(mergedAdditions.settings).toEqual(current.settings);
   });
+
+  it("es idempotente ante reintentos y conserva movimientos creados durante la importación", () => {
+    const locallyCreatedDuringImport: Transaction = {
+      ...second,
+      id: "10000000-0000-4000-8000-000000000003",
+      amountCents: 99_999,
+    };
+    const backup = createBackup(snapshot([first, second, second]));
+    const initial = snapshot([first]);
+    const plan = planBackupImport(backup, initial);
+    const additions = snapshotForMerge(plan, initial);
+
+    // The same plan can be submitted twice (for example, after a delayed
+    // response), while another tab adds a movement in the meantime.
+    const afterFirstMerge = snapshot([
+      ...initial.transactions,
+      ...additions.transactions,
+      locallyCreatedDuringImport,
+    ]);
+    const retryPlan = planBackupImport(backup, afterFirstMerge);
+
+    expect(plan.newTransactionCount).toBe(1);
+    expect(snapshotForMerge(retryPlan, afterFirstMerge).transactions).toEqual(
+      [],
+    );
+    expect(afterFirstMerge.transactions).toHaveLength(3);
+    expect(afterFirstMerge.transactions).toContain(locallyCreatedDuringImport);
+  });
 });

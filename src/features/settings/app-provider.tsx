@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { initializeDatabase, resetDevelopmentData } from "@/lib/db/bootstrap";
@@ -45,13 +46,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const refreshVersion = useRef(0);
 
   const refresh = useCallback(async () => {
+    const version = ++refreshVersion.current;
     const [movements, availableCategories, appSettings] = await Promise.all([
       transactionRepository.list(),
       categoryRepository.list(),
       settingsRepository.get(),
     ]);
+
+    // Mutations can trigger overlapping reads. Ignore an older response that
+    // arrives after a more recent refresh, otherwise the UI may briefly (or
+    // permanently) show a stale list of movements.
+    if (version !== refreshVersion.current) {
+      return;
+    }
+
     setTransactions(movements);
     setCategories(availableCategories);
     setSettings(appSettings);

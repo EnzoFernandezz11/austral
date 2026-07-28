@@ -54,11 +54,40 @@ export const appDataRepository = {
       "rw",
       [database.transactions, database.categories],
       async () => {
-        if (snapshot.transactions.length > 0) {
-          await database.transactions.bulkAdd(snapshot.transactions);
+        // The import preview is calculated before the user confirms it. A
+        // second tab (or a double confirmation) can write the same backup in
+        // between that preview and this transaction. Deduplicate again while
+        // holding the IndexedDB write transaction so that merging remains
+        // idempotent instead of failing with a primary-key constraint error.
+        const existingTransactions = await database.transactions.bulkGet(
+          snapshot.transactions.map((transaction) => transaction.id),
+        );
+        const existingTransactionIds = new Set(
+          existingTransactions.flatMap((transaction) =>
+            transaction === undefined ? [] : [transaction.id],
+          ),
+        );
+        const newTransactions = snapshot.transactions.filter(
+          (transaction) => !existingTransactionIds.has(transaction.id),
+        );
+
+        const existingCategories = await database.categories.bulkGet(
+          snapshot.categories.map((category) => category.id),
+        );
+        const existingCategoryIds = new Set(
+          existingCategories.flatMap((category) =>
+            category === undefined ? [] : [category.id],
+          ),
+        );
+        const newCategories = snapshot.categories.filter(
+          (category) => !existingCategoryIds.has(category.id),
+        );
+
+        if (newTransactions.length > 0) {
+          await database.transactions.bulkAdd(newTransactions);
         }
-        if (snapshot.categories.length > 0) {
-          await database.categories.bulkAdd(snapshot.categories);
+        if (newCategories.length > 0) {
+          await database.categories.bulkAdd(newCategories);
         }
       },
     );
