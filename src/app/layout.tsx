@@ -6,16 +6,16 @@ import { PwaManager } from "@/components/pwa-manager";
 
 export const metadata: Metadata = {
   title: {
-    default: "Austral",
-    template: "%s · Austral",
+    default: "austral",
+    template: "%s · austral",
   },
   description: "Control financiero personal, privado y local-first.",
-  applicationName: "Austral",
+  applicationName: "austral",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Austral",
+    title: "austral",
   },
   icons: {
     icon: [

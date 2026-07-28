@@ -17,6 +17,22 @@ function supportsType(category: Category, type: TransactionType): boolean {
   return category.type === "both" || category.type === type;
 }
 
+function defaultCategoryId(
+  categories: readonly Category[],
+  type: TransactionType,
+): string {
+  if (type === "income") {
+    const otherIncome = categories.find(
+      (category) => category.id === "income-other",
+    );
+    if (otherIncome !== undefined) {
+      return otherIncome.id;
+    }
+  }
+
+  return categories.find((category) => supportsType(category, type))?.id ?? "";
+}
+
 export function QuickExpenseForm() {
   const router = useRouter();
   const { categories, saveTransaction } = useAppData();
@@ -35,10 +51,7 @@ export function QuickExpenseForm() {
 
   const selectType = (nextType: TransactionType) => {
     setType(nextType);
-    const first = categories.find((category) =>
-      supportsType(category, nextType),
-    );
-    setCategoryId(first?.id ?? "");
+    setCategoryId(defaultCategoryId(categories, nextType));
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -115,33 +128,31 @@ export function QuickExpenseForm() {
         </div>
       </div>
 
-      <fieldset>
-        <legend className="mb-3 text-[12px] font-semibold tracking-wide">
-          CATEGORÍA
-        </legend>
-        <div className="grid grid-cols-3 gap-x-2 gap-y-3">
-          {availableCategories.map((category) => (
-            <button
-              aria-pressed={categoryId === category.id}
-              className={`flex min-h-[70px] flex-col items-center justify-center gap-1 rounded-xl border text-center text-[10px] ${
-                categoryId === category.id
-                  ? "border-[var(--navy)] bg-[#f1f4f5]"
-                  : "border-transparent"
-              }`}
-              key={category.id}
-              onClick={() => setCategoryId(category.id)}
-              type="button"
-            >
-              <CategoryIcon
-                income={type === "income"}
-                name={category.icon}
-                size="small"
-              />
-              <span className="line-clamp-2">{category.name}</span>
-            </button>
-          ))}
-        </div>
-      </fieldset>
+      {type === "expense" ? (
+        <fieldset>
+          <legend className="mb-3 text-[12px] font-semibold tracking-wide">
+            CATEGORÍA
+          </legend>
+          <div className="grid grid-cols-3 gap-x-2 gap-y-3">
+            {availableCategories.map((category) => (
+              <button
+                aria-pressed={categoryId === category.id}
+                className={`flex min-h-[70px] flex-col items-center justify-center gap-1 rounded-xl border text-center text-[10px] ${
+                  categoryId === category.id
+                    ? "border-[var(--navy)] bg-[#f1f4f5]"
+                    : "border-transparent"
+                }`}
+                key={category.id}
+                onClick={() => setCategoryId(category.id)}
+                type="button"
+              >
+                <CategoryIcon name={category.icon} size="small" />
+                <span className="line-clamp-2">{category.name}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
 
       <div className="mt-5 grid grid-cols-2 gap-5">
         <div>

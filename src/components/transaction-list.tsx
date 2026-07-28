@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { EllipsisVertical } from "lucide-react";
 import { useRef, useState, type TouchEvent } from "react";
 import { CategoryIcon } from "@/components/category-icon";
 import { formatArs } from "@/lib/formatters/currency";
@@ -35,7 +36,11 @@ export function TransactionList({
             onDelete={onDelete}
             transaction={transaction}
           >
-            <div className="flex min-h-[66px] items-center gap-3 border-b bg-[var(--paper)] py-2 hairline">
+            <div
+              className={`flex min-h-[66px] items-center gap-3 border-b bg-[var(--paper)] py-2 hairline ${
+                editable ? "pr-11" : ""
+              }`}
+            >
               <CategoryIcon
                 income={transaction.type === "income"}
                 name={category?.icon ?? "Ellipsis"}
@@ -135,6 +140,20 @@ function SwipeableRow({
         style={{ transform: revealed ? "translateX(-128px)" : "translateX(0)" }}
       >
         {children}
+        <button
+          aria-expanded={revealed}
+          aria-label={
+            revealed
+              ? "Ocultar acciones del movimiento"
+              : "Mostrar acciones del movimiento"
+          }
+          className="absolute inset-y-0 right-0 grid w-11 place-items-center text-[var(--muted)] transition-colors hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-[var(--navy)]"
+          onClick={() => setRevealed((current) => !current)}
+          title={revealed ? "Ocultar acciones" : "Editar o eliminar"}
+          type="button"
+        >
+          <EllipsisVertical aria-hidden="true" size={18} />
+        </button>
       </div>
     </li>
   );

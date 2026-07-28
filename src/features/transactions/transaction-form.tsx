@@ -27,6 +27,25 @@ function categorySupportsType(
   return category.type === "both" || category.type === type;
 }
 
+function defaultCategoryId(
+  categories: readonly Category[],
+  type: TransactionType,
+): string {
+  if (type === "income") {
+    const otherIncome = categories.find(
+      (category) => category.id === "income-other",
+    );
+    if (otherIncome !== undefined) {
+      return otherIncome.id;
+    }
+  }
+
+  return (
+    categories.find((category) => categorySupportsType(category, type))?.id ??
+    ""
+  );
+}
+
 export function TransactionForm({
   transaction,
 }: {
@@ -63,10 +82,7 @@ export function TransactionForm({
         category.id === categoryId && categorySupportsType(category, nextType),
     );
     if (!currentStillValid) {
-      setCategoryId(
-        categories.find((category) => categorySupportsType(category, nextType))
-          ?.id ?? "",
-      );
+      setCategoryId(defaultCategoryId(categories, nextType));
     }
   };
 
@@ -171,27 +187,29 @@ export function TransactionForm({
         />
       </div>
 
-      <div>
-        <label
-          className="mb-1 block text-sm text-[var(--muted)]"
-          htmlFor="category"
-        >
-          Categoría
-        </label>
-        <select
-          className="field"
-          id="category"
-          onChange={(event) => setCategoryId(event.target.value)}
-          required
-          value={categoryId}
-        >
-          {availableCategories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {type === "expense" ? (
+        <div>
+          <label
+            className="mb-1 block text-sm text-[var(--muted)]"
+            htmlFor="category"
+          >
+            Categoría
+          </label>
+          <select
+            className="field"
+            id="category"
+            onChange={(event) => setCategoryId(event.target.value)}
+            required
+            value={categoryId}
+          >
+            {availableCategories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       <div>
         <label

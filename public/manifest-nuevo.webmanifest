@@ -1,7 +1,7 @@
 {
   "name": "Anotar gasto",
   "short_name": "Anotar gasto",
-  "description": "Acceso rápido para registrar un gasto en Austral.",
+  "description": "Acceso rápido para registrar un gasto en austral.",
   "lang": "es-AR",
   "start_url": "/nuevo",
   "scope": "/",
