@@ -6,6 +6,7 @@ import {
   Pencil,
   Plus,
   Shapes,
+  ShieldCheck,
   Trash2,
   Upload,
   WalletCards,
@@ -24,16 +25,41 @@ import {
 } from "@/features/backup/backup-service";
 import { ErrorState, LoadingState } from "@/components/screen-state";
 import { TopHeader } from "@/components/top-header";
+import { MoneyInput } from "@/components/money-input";
 import { useAppData } from "@/features/settings/app-provider";
-import { parseAmountToCents } from "@/lib/finance/money";
+import { formatCentsForInput, parseAmountToCents } from "@/lib/finance/money";
 import { formatArs } from "@/lib/formatters/currency";
+import {
+  friendlyStorageError,
+  isStorageAlmostFull,
+} from "@/lib/storage/storage-service";
 import type { Category, TransactionType } from "@/types/finance";
 
-type OpenPanel = "budget" | "categories" | "message" | "import" | null;
+type OpenPanel =
+  "budget" | "categories" | "security" | "message" | "import" | null;
 type CategoryEditor = "new" | string | null;
 
-function centsToInput(amountCents: number): string {
-  return `${Math.floor(amountCents / 100)},${String(amountCents % 100).padStart(2, "0")}`;
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function formatBackupDate(value: string | null): string {
+  if (value === null) {
+    return "Todavía no creaste un respaldo";
+  }
+  return new Intl.DateTimeFormat("es-AR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 export function SettingsScreen() {
@@ -42,10 +68,15 @@ export function SettingsScreen() {
     error,
     settings,
     categories,
+    storageHealth,
+    lastBackupAt,
     setMonthlyBudget,
     saveCategory: persistCategory,
     deleteCategory,
     refresh,
+    refreshStorageHealth,
+    requestPersistentStorage,
+    recordBackup,
   } = useAppData();
   const fileInput = useRef<HTMLInputElement>(null);
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
@@ -57,6 +88,7 @@ export function SettingsScreen() {
   const [message, setMessage] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [protecting, setProtecting] = useState(false);
 
   if (status === "loading") {
     return <LoadingState />;
@@ -73,17 +105,24 @@ export function SettingsScreen() {
       setActionError("Ingresá un monto mayor a cero.");
       return;
     }
-    await setMonthlyBudget(amountCents);
-    setBudget("");
-    setActionError(null);
-    setOpenPanel(null);
+    try {
+      setBusy(true);
+      await setMonthlyBudget(amountCents);
+      setBudget("");
+      setActionError(null);
+      setOpenPanel(null);
+    } catch (cause: unknown) {
+      setActionError(friendlyStorageError(cause).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const openBudget = () => {
     setBudget(
       settings.monthlyBudgetCents === undefined
         ? ""
-        : centsToInput(settings.monthlyBudgetCents),
+        : formatCentsForInput(settings.monthlyBudgetCents),
     );
     setActionError(null);
     setOpenPanel("budget");
@@ -141,15 +180,43 @@ export function SettingsScreen() {
     try {
       setBusy(true);
       setActionError(null);
-      await exportJsonBackup();
-      setMessage("El respaldo JSON se descargó correctamente.");
+      const result = await exportJsonBackup();
+      await recordBackup(result.exportedAt);
+      setMessage(
+        result.delivery === "share"
+          ? "El respaldo se compartió correctamente."
+          : "El respaldo JSON se descargó correctamente.",
+      );
       setOpenPanel("message");
     } catch (cause: unknown) {
+      if (
+        typeof cause === "object" &&
+        cause !== null &&
+        "name" in cause &&
+        cause.name === "AbortError"
+      ) {
+        return;
+      }
       setActionError(
         cause instanceof Error ? cause.message : "No se pudo exportar.",
       );
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openSecurity = () => {
+    setOpenPanel("security");
+    void refreshStorageHealth();
+  };
+
+  const protectStorage = async () => {
+    try {
+      setProtecting(true);
+      setActionError(null);
+      await requestPersistentStorage();
+    } finally {
+      setProtecting(false);
     }
   };
 
@@ -187,15 +254,23 @@ export function SettingsScreen() {
     if (!window.confirm(warning)) {
       return;
     }
-    await importBackup(plan, mode);
-    await refresh();
-    setPlan(null);
-    setMessage("El respaldo se importó correctamente.");
-    setOpenPanel("message");
+    try {
+      setBusy(true);
+      await importBackup(plan, mode);
+      await refresh();
+      setPlan(null);
+      setMessage("El respaldo se importó correctamente.");
+      setOpenPanel("message");
+    } catch (cause: unknown) {
+      setMessage(friendlyStorageError(cause).message);
+      setOpenPanel("message");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <div className="screen">
+    <div className="screen flex min-h-full flex-col">
       <TopHeader />
       <h1 className="mb-5 mt-8 text-[19px] font-semibold">Ajustes</h1>
 
@@ -211,9 +286,14 @@ export function SettingsScreen() {
           onClick={() => setOpenPanel("categories")}
         />
         <SettingsItem
+          icon={ShieldCheck}
+          label="Seguridad de los datos"
+          onClick={openSecurity}
+        />
+        <SettingsItem
           disabled={busy}
           icon={Upload}
-          label="Exportar respaldo"
+          label="Crear respaldo"
           onClick={() => void exportBackup()}
         />
         <SettingsItem
@@ -237,9 +317,23 @@ export function SettingsScreen() {
         </p>
       )}
 
-      <p className="mt-8 border-t pt-6 text-center text-[12px] text-[var(--muted)] hairline">
+      <p className="mt-8 pt-6 text-center text-[12px] text-[var(--muted)]">
         Tus datos se guardan en este dispositivo.
       </p>
+
+      <div className="mt-auto space-y-1 pt-6 text-center text-[12px] text-[var(--muted)]">
+        <p>
+          Desarrollado por{" "}
+          <a
+            className="hover:underline"
+            href="https://github.com/EnzoFernandezz11"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Enzo Fernández
+          </a>
+        </p>
+      </div>
 
       {openPanel === "budget" ? (
         <Modal onClose={() => setOpenPanel(null)} title="Presupuesto mensual">
@@ -257,12 +351,11 @@ export function SettingsScreen() {
             <label className="text-xs font-medium" htmlFor="budget">
               Monto mensual en ARS
             </label>
-            <input
+            <MoneyInput
               autoFocus
-              className="field mt-1"
+              className="mt-1"
               id="budget"
-              inputMode="decimal"
-              onChange={(event) => setBudget(event.target.value)}
+              onValueChange={setBudget}
               placeholder="100.000"
               value={budget}
             />
@@ -375,6 +468,66 @@ export function SettingsScreen() {
                 </button>
               </div>
             </form>
+          )}
+        </Modal>
+      ) : null}
+
+      {openPanel === "security" ? (
+        <Modal
+          onClose={() => setOpenPanel(null)}
+          title="Seguridad de los datos"
+        >
+          <dl className="space-y-4 text-sm">
+            <div>
+              <dt className="text-[var(--muted)]">Protección local</dt>
+              <dd className="mt-1 font-semibold">
+                {storageHealth.persistence === "persistent"
+                  ? "Protegido"
+                  : storageHealth.persistence === "best-effort"
+                    ? "Protección limitada"
+                    : storageHealth.persistence === "unsupported"
+                      ? "No compatible con este navegador"
+                      : "No se pudo consultar"}
+              </dd>
+            </div>
+            {storageHealth.usageBytes !== undefined &&
+            storageHealth.quotaBytes !== undefined ? (
+              <div>
+                <dt className="text-[var(--muted)]">Espacio del navegador</dt>
+                <dd className="mt-1 font-semibold">
+                  {formatBytes(storageHealth.usageBytes)} de{" "}
+                  {formatBytes(storageHealth.quotaBytes)} utilizados
+                </dd>
+                {isStorageAlmostFull(storageHealth) ? (
+                  <p className="mt-1 text-xs text-amber-800">
+                    El espacio disponible es bajo.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            <div>
+              <dt className="text-[var(--muted)]">Último respaldo</dt>
+              <dd className="mt-1 font-semibold">
+                {formatBackupDate(lastBackupAt)}
+              </dd>
+            </div>
+          </dl>
+
+          <p className="mt-5 text-xs leading-5 text-[var(--muted)]">
+            La protección reduce el riesgo de limpieza automática, pero borrar
+            la app o sus datos también elimina la información local.
+          </p>
+
+          {storageHealth.persistence === "persistent" ||
+          storageHealth.persistence === "unsupported" ? null : (
+            <button
+              className="button-black mt-5 w-full"
+              disabled={protecting}
+              onClick={() => void protectStorage()}
+              type="button"
+            >
+              {protecting ? "Solicitando…" : "Reintentar protección"}
+            </button>
           )}
         </Modal>
       ) : null}

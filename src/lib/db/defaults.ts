@@ -1,6 +1,6 @@
 import type { AppSettings, Category } from "@/types/finance";
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: CURRENT_SCHEMA_VERSION,

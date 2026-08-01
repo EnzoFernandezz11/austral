@@ -6,10 +6,16 @@ export type StoredSettings = AppSettings & {
   id: "app";
 };
 
+export type StoredMetadata = {
+  id: "local";
+  lastBackupAt?: string | undefined;
+};
+
 class AustralDatabase extends Dexie {
   transactions!: EntityTable<Transaction, "id">;
   categories!: EntityTable<Category, "id">;
   settings!: EntityTable<StoredSettings, "id">;
+  metadata!: EntityTable<StoredMetadata, "id">;
 
   constructor() {
     super("austral-finance");
@@ -20,7 +26,7 @@ class AustralDatabase extends Dexie {
       settings: "&id",
     });
 
-    this.version(CURRENT_SCHEMA_VERSION)
+    this.version(2)
       .stores({
         transactions:
           "&id, occurredOn, type, categoryId, updatedAt, [type+occurredOn], [categoryId+occurredOn]",
@@ -37,6 +43,23 @@ class AustralDatabase extends Dexie {
             movement.updatedAt = movement.updatedAt || movement.createdAt;
           });
 
+        await transaction
+          .table<StoredSettings>("settings")
+          .toCollection()
+          .modify((settings) => {
+            settings.schemaVersion = CURRENT_SCHEMA_VERSION;
+          });
+      });
+
+    this.version(CURRENT_SCHEMA_VERSION)
+      .stores({
+        transactions:
+          "&id, occurredOn, type, categoryId, updatedAt, [type+occurredOn], [categoryId+occurredOn]",
+        categories: "&id, type, isDefault",
+        settings: "&id",
+        metadata: "&id",
+      })
+      .upgrade(async (transaction) => {
         await transaction
           .table<StoredSettings>("settings")
           .toCollection()

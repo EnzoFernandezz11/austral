@@ -3,9 +3,10 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
+import { MoneyInput } from "@/components/money-input";
 import { useAppData } from "@/features/settings/app-provider";
 import { currentLocalDate } from "@/lib/finance/periods";
-import { parseAmountToCents } from "@/lib/finance/money";
+import { formatCentsForInput, parseAmountToCents } from "@/lib/finance/money";
 import { transactionDraftSchema } from "@/lib/validation/transaction";
 import type {
   Category,
@@ -13,12 +14,6 @@ import type {
   TransactionDraft,
   TransactionType,
 } from "@/types/finance";
-
-function centsToInput(amountCents: number): string {
-  const units = Math.floor(amountCents / 100);
-  const cents = String(amountCents % 100).padStart(2, "0");
-  return `${units},${cents}`;
-}
 
 function categorySupportsType(
   category: Category,
@@ -57,7 +52,9 @@ export function TransactionForm({
     transaction?.type ?? "expense",
   );
   const [amount, setAmount] = useState(
-    transaction === undefined ? "" : centsToInput(transaction.amountCents),
+    transaction === undefined
+      ? ""
+      : formatCentsForInput(transaction.amountCents),
   );
   const [categoryId, setCategoryId] = useState(
     transaction?.categoryId ?? "expense-food",
@@ -175,12 +172,9 @@ export function TransactionForm({
         >
           Monto en ARS
         </label>
-        <input
-          autoComplete="off"
-          className="field"
+        <MoneyInput
           id="amount"
-          inputMode="decimal"
-          onChange={(event) => setAmount(event.target.value)}
+          onValueChange={setAmount}
           placeholder="0,00"
           required
           value={amount}

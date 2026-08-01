@@ -3,6 +3,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { CategoryIcon } from "@/components/category-icon";
+import { MoneyInput } from "@/components/money-input";
 import { useAppData } from "@/features/settings/app-provider";
 import { parseAmountToCents } from "@/lib/finance/money";
 import { currentLocalDate } from "@/lib/finance/periods";
@@ -113,19 +114,14 @@ export function QuickExpenseForm() {
         <label className="sr-only" htmlFor="quick-amount">
           Monto en ARS
         </label>
-        <div className="mx-auto flex max-w-[290px] items-center justify-center">
-          <span className="numeric mr-2 text-[34px] font-bold">$</span>
-          <input
-            autoComplete="off"
-            autoFocus
-            className="quick-amount numeric min-w-0 max-w-[230px] bg-transparent text-center text-[42px] font-bold outline-none placeholder:text-black"
-            id="quick-amount"
-            inputMode="decimal"
-            onChange={(event) => setAmount(event.target.value)}
-            placeholder="0"
-            value={amount}
-          />
-        </div>
+        <MoneyInput
+          autoFocus
+          id="quick-amount"
+          onValueChange={setAmount}
+          placeholder="0"
+          value={amount}
+          variant="hero"
+        />
       </div>
 
       {type === "expense" ? (

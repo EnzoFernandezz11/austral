@@ -14,7 +14,6 @@ import { TransactionList } from "@/components/transaction-list";
 import { useAppData } from "@/features/settings/app-provider";
 import {
   calculateExpensesByCategory,
-  calculateRemainingBudget,
   calculateTotals,
 } from "@/lib/finance/calculations";
 import { currentMonth, filterTransactionsByMonth } from "@/lib/finance/periods";
@@ -37,11 +36,6 @@ export function DashboardScreen() {
     selectedMonth,
   );
   const totals = calculateTotals(monthlyTransactions);
-  const remainingBudget = calculateRemainingBudget(
-    settings.monthlyBudgetCents,
-    totals.expenseCents,
-  );
-  const available = remainingBudget ?? totals.balanceCents;
   const categoryExpenses = calculateExpensesByCategory(
     monthlyTransactions,
     categories,
@@ -55,8 +49,7 @@ export function DashboardScreen() {
           100,
           Math.max(
             0,
-            ((settings.monthlyBudgetCents - totals.expenseCents) * 100) /
-              settings.monthlyBudgetCents,
+            (totals.expenseCents * 100) / settings.monthlyBudgetCents,
           ),
         );
 
@@ -73,16 +66,12 @@ export function DashboardScreen() {
       ) : (
         <>
           <section className="pb-6 pt-2 text-center">
-            <p className="text-[9px] font-medium tracking-[0.12em]">
-              DISPONIBLE
-            </p>
+            <p className="text-[9px] font-medium tracking-[0.12em]">GASTADO</p>
             <p className="numeric mt-1 text-[32px] font-bold">
-              {formatArs(available)}
+              {formatArs(totals.expenseCents)}
             </p>
             <p className="mt-1 text-[12px] text-[#4f5659]">
-              {settings.monthlyBudgetCents === undefined
-                ? "saldo del mes"
-                : `de ${formatArs(settings.monthlyBudgetCents)} para este mes`}
+              Total gastado este mes
             </p>
             <div className="mt-2 h-px w-full bg-[var(--line)]">
               <div
@@ -92,14 +81,13 @@ export function DashboardScreen() {
             </div>
           </section>
 
-          <section className="grid grid-cols-3 py-5">
+          <section className="grid grid-cols-2 py-5">
             <Metric label="INGRESOS" value={formatArs(totals.incomeCents)} />
             <Metric
               bordered
-              label="GASTOS"
-              value={formatArs(totals.expenseCents)}
+              label="SALDO"
+              value={formatArs(totals.balanceCents)}
             />
-            <Metric label="SALDO" value={formatArs(totals.balanceCents)} />
           </section>
 
           <section className="mt-4">
@@ -141,7 +129,7 @@ function Metric({
   bordered?: boolean;
 }) {
   return (
-    <div className={bordered ? "border-x hairline" : ""}>
+    <div className={bordered ? "border-l hairline" : ""}>
       <p className="text-center text-[8px] tracking-[0.08em]">{label}</p>
       <p className="numeric mt-1 text-center text-[12px] font-semibold">
         {value}

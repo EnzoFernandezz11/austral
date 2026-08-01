@@ -23,6 +23,11 @@ function downloadText(
   URL.revokeObjectURL(url);
 }
 
+export type BackupExportResult = {
+  exportedAt: string;
+  delivery: "share" | "download";
+};
+
 function exportDate(): string {
   const now = new Date();
   const year = now.getFullYear();
@@ -35,14 +40,29 @@ function escapeCsv(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
-export async function exportJsonBackup(): Promise<void> {
+export async function exportJsonBackup(): Promise<BackupExportResult> {
   const snapshot = await appDataRepository.getSnapshot();
   const backup = createBackup(snapshot);
-  downloadText(
-    JSON.stringify(backup, null, 2),
-    `austral-backup-${exportDate()}.json`,
-    "application/json;charset=utf-8",
-  );
+  const filename = `austral-backup-${exportDate()}.json`;
+  const mimeType = "application/json;charset=utf-8";
+  const contents = JSON.stringify(backup, null, 2);
+  const file = new File([contents], filename, { type: "application/json" });
+  const shareData: ShareData = {
+    files: [file],
+    title: "Respaldo de Austral",
+  };
+
+  if (
+    navigator.share !== undefined &&
+    navigator.canShare !== undefined &&
+    navigator.canShare({ files: [file] })
+  ) {
+    await navigator.share(shareData);
+    return { exportedAt: backup.exportedAt, delivery: "share" };
+  }
+
+  downloadText(contents, filename, mimeType);
+  return { exportedAt: backup.exportedAt, delivery: "download" };
 }
 
 export async function inspectBackupFile(

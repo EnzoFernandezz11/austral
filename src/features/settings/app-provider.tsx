@@ -13,8 +13,16 @@ import { initializeDatabase, resetDevelopmentData } from "@/lib/db/bootstrap";
 import { DEFAULT_SETTINGS } from "@/lib/db/defaults";
 import { appDataRepository } from "@/lib/db/repositories/app-data-repository";
 import { categoryRepository } from "@/lib/db/repositories/category-repository";
+import { metadataRepository } from "@/lib/db/repositories/metadata-repository";
 import { settingsRepository } from "@/lib/db/repositories/settings-repository";
 import { transactionRepository } from "@/lib/db/repositories/transaction-repository";
+import {
+  friendlyStorageError,
+  INITIAL_STORAGE_HEALTH,
+  inspectStorageHealth,
+  requestPersistentStorage as persistStorage,
+  type StorageHealth,
+} from "@/lib/storage/storage-service";
 import type {
   AppSettings,
   Category,
@@ -31,7 +39,12 @@ type AppContextValue = {
   transactions: Transaction[];
   categories: Category[];
   settings: AppSettings;
+  storageHealth: StorageHealth;
+  lastBackupAt: string | null;
   refresh: () => Promise<void>;
+  refreshStorageHealth: () => Promise<void>;
+  requestPersistentStorage: () => Promise<void>;
+  recordBackup: (exportedAt: string) => Promise<void>;
   saveTransaction: (draft: TransactionDraft, id?: string) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   setMonthlyBudget: (amountCents?: number) => Promise<void>;
@@ -47,12 +60,24 @@ type AppContextValue = {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+async function runStorageMutation(operation: () => Promise<void>) {
+  try {
+    await operation();
+  } catch (cause: unknown) {
+    throw friendlyStorageError(cause);
+  }
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AppStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [storageHealth, setStorageHealth] = useState<StorageHealth>(
+    INITIAL_STORAGE_HEALTH,
+  );
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
   const refreshVersion = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -77,6 +102,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setStatus("ready");
   }, []);
 
+  const refreshStorageHealth = useCallback(async () => {
+    setStorageHealth(await inspectStorageHealth());
+  }, []);
+
+  const requestPersistentStorage = useCallback(async () => {
+    setStorageHealth(await persistStorage());
+  }, []);
+
+  const recordBackup = useCallback(async (exportedAt: string) => {
+    await runStorageMutation(() =>
+      metadataRepository.setLastBackupAt(exportedAt),
+    );
+    setLastBackupAt(exportedAt);
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -86,13 +126,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (active) {
           await refresh();
         }
+
+        void persistStorage().then((health) => {
+          if (active) {
+            setStorageHealth(health);
+          }
+        });
+        void metadataRepository
+          .getLastBackupAt()
+          .then((storedLastBackupAt) => {
+            if (active) {
+              setLastBackupAt(storedLastBackupAt);
+            }
+          })
+          .catch(() => undefined);
       } catch (cause: unknown) {
         if (active) {
-          setError(
-            cause instanceof Error
-              ? cause.message
-              : "Ocurrió un error inesperado al abrir IndexedDB.",
-          );
+          setError(friendlyStorageError(cause).message);
           setStatus("error");
         }
       }
@@ -106,11 +156,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const saveTransaction = useCallback(
     async (draft: TransactionDraft, id?: string) => {
-      if (id === undefined) {
-        await transactionRepository.create(draft);
-      } else {
-        await transactionRepository.update(id, draft);
-      }
+      await runStorageMutation(async () => {
+        if (id === undefined) {
+          await transactionRepository.create(draft);
+        } else {
+          await transactionRepository.update(id, draft);
+        }
+      });
       await refresh();
     },
     [refresh],
@@ -118,7 +170,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteTransaction = useCallback(
     async (id: string) => {
-      await transactionRepository.remove(id);
+      await runStorageMutation(() => transactionRepository.remove(id));
       await refresh();
     },
     [refresh],
@@ -126,7 +178,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setMonthlyBudget = useCallback(
     async (amountCents?: number) => {
-      await settingsRepository.setMonthlyBudget(amountCents);
+      await runStorageMutation(() =>
+        settingsRepository.setMonthlyBudget(amountCents).then(() => undefined),
+      );
       await refresh();
     },
     [refresh],
@@ -134,11 +188,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const saveCategory = useCallback(
     async (name: string, type: TransactionType, id?: string) => {
-      if (id === undefined) {
-        await categoryRepository.create(name, type);
-      } else {
-        await categoryRepository.update(id, name, type);
-      }
+      await runStorageMutation(async () => {
+        if (id === undefined) {
+          await categoryRepository.create(name, type);
+        } else {
+          await categoryRepository.update(id, name, type);
+        }
+      });
       await refresh();
     },
     [refresh],
@@ -146,14 +202,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteCategory = useCallback(
     async (id: string) => {
-      await categoryRepository.remove(id);
+      await runStorageMutation(() => categoryRepository.remove(id));
       await refresh();
     },
     [refresh],
   );
 
   const clearTransactions = useCallback(async () => {
-    await appDataRepository.clearTransactions();
+    await runStorageMutation(() => appDataRepository.clearTransactions());
     await refresh();
   }, [refresh]);
 
@@ -169,7 +225,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       transactions,
       categories,
       settings,
+      storageHealth,
+      lastBackupAt,
       refresh,
+      refreshStorageHealth,
+      requestPersistentStorage,
+      recordBackup,
       saveTransaction,
       deleteTransaction,
       setMonthlyBudget,
@@ -184,7 +245,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       transactions,
       categories,
       settings,
+      storageHealth,
+      lastBackupAt,
       refresh,
+      refreshStorageHealth,
+      requestPersistentStorage,
+      recordBackup,
       saveTransaction,
       deleteTransaction,
       setMonthlyBudget,
